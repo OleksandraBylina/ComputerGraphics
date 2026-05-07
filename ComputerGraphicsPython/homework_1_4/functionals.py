@@ -32,33 +32,48 @@ class Tetrahedron:
         )
 
 def quaternion(vector, theta):
-    q = []
+    length = math.sqrt(vector[0]**2 + vector[1]**2 + vector[2]**2)
+
+    ux = vector[0] / length
+    uy = vector[1] / length
+    uz = vector[2] / length
+
+    q = [0, 0, 0, 0]
     q[0] = math.cos(theta/2)
-    q[1] = math.cos(theta/2) + vector[0] * math.sin(theta / 2)
-    q[2] = math.cos(theta/2) + vector[1] * math.sin(theta / 2)
-    q[3] = math.cos(theta/2) + vector[2] * math.sin(theta / 2)
+    q[1] = ux * math.sin(theta / 2)
+    q[2] = uy * math.sin(theta / 2)
+    q[3] = uz * math.sin(theta / 2)
     return q
 
 def norm_quaternion(q):
     return math.sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3])
 
+def normalize_quaternion(q):
+    n = norm_quaternion(q)
+
+    return [q[0] / n, q[1] / n, q[2] / n, q[3] / n]
+
 def get_R_matrix_quaternion(q):
-    return np.array([[1 - 2 * q[2] * q[2] - 2 * q[3] * q[3], 2 * q[1] * q[2] - 2 * q[0] * q[3], 2 * q[1] * q[3] + 2 * q[0] * q[2]], [2 * q[1] * q[2] + 2 * q[0] * q[3], 1 - 2 * q[1] * q[1] - 2 * q[3] * q[3], 2 * q[2] * q[3] - 2 * q[0] * q[1]], [2 * q[1] * q[2] - 2 * q[0] * q[3], 2 * q[2] * q[3] + 2 * q[0] * q[1], 1 - 2 * q[1] * q[1] - 2 * q[2] * q[2]]])
+    q = normalize_quaternion(q)
+
+    return np.array([[1 - 2 * q[2] * q[2] - 2 * q[3] * q[3], 2 * q[1] * q[2] - 2 * q[0] * q[3], 2 * q[1] * q[3] + 2 * q[0] * q[2]], [2 * q[1] * q[2] + 2 * q[0] * q[3], 1 - 2 * q[1] * q[1] - 2 * q[3] * q[3], 2 * q[2] * q[3] - 2 * q[0] * q[1]], [2 * q[1] * q[3] - 2 * q[0] * q[2], 2 * q[2] * q[3] + 2 * q[0] * q[1], 1 - 2 * q[1] * q[1] - 2 * q[2] * q[2]]])
 
 def antiquaternion(q):
     return [q[0], -q[1], -q[2], -q[3]]
 
 def mul_quaternion(q1, q2):
-    q = []
+    q = [0, 0, 0, 0]
     q[0] = q1[0] * q2[0] - q1[1] * q2[1] - q1[2] * q2[2] - q1[3] * q2[3]
-    q[1] = q1[0] * q2[1] - q1[1] * q2[0] - q1[2] * q2[3] - q1[3] * q2[2]
-    q[2] = q1[0] * q2[2] - q1[1] * q2[3] - q1[2] * q2[0] - q1[3] * q2[1]
-    q[3] = q1[0] * q2[3] - q1[1] * q2[2] - q1[2] * q2[1] - q1[3] * q2[0]
+    q[1] = q1[0] * q2[1] + q1[1] * q2[0] + q1[2] * q2[3] - q1[3] * q2[2]
+    q[2] = q1[0] * q2[2] - q1[1] * q2[3] + q1[2] * q2[0] + q1[3] * q2[1]
+    q[3] = q1[0] * q2[3] + q1[1] * q2[2] - q1[2] * q2[1] + q1[3] * q2[0]
     return q
 
 def make_quaternion_rotation(vector, q):
+    q = normalize_quaternion(q)
     aq = antiquaternion(q)
-    f1 = mul_quaternion(q, vector)
+    v = vector_to_quaternion(vector)
+    f1 = mul_quaternion(q, v)
     f2 = mul_quaternion(f1, aq)
     return f2
 
@@ -83,22 +98,89 @@ def make_rodrigues_rotation(vector, v, theta):
     return R @ vector
 
 def find_angle_from_quaternion(q):
+    q = normalize_quaternion(q)
     return 2 * np.arccos(q[0])
 
 def find_axis_from_quaternion(q):
-    v = []
+    q = normalize_quaternion(q)
     theta = find_angle_from_quaternion(q)
     s = math.sin(theta / 2)
+
+    if abs(s) < 1e-10:
+        return [1, 0, 0]
+
+    v = [0, 0, 0]
     v[0] = q[1] / s
     v[1] = q[2] / s
     v[2] = q[3] / s
     return v
 
+def R_matrix_to_quaternion(R):
+    trace = R[0][0] + R[1][1] + R[2][2]
 
+    if trace > 0:
+        s = np.sqrt(trace + 1.0) * 2
+        w = 0.25 * s
+        x = (R[2][1] - R[1][2]) / s
+        y = (R[0][2] - R[2][0]) / s
+        z = (R[1][0] - R[0][1]) / s
 
+    elif R[0][0] > R[1][1] and R[0][0] > R[2][2]:
+        s = np.sqrt(1.0 + R[0][0] - R[1][1] - R[2][2]) * 2
+        w = (R[2][1] - R[1][2]) / s
+        x = 0.25 * s
+        y = (R[0][1] + R[1][0]) / s
+        z = (R[0][2] + R[2][0]) / s
 
+    elif R[1][1] > R[2][2]:
+        s = np.sqrt(1.0 + R[1][1] - R[0][0] - R[2][2]) * 2
+        w = (R[0][2] - R[2][0]) / s
+        x = (R[0][1] + R[1][0]) / s
+        y = 0.25 * s
+        z = (R[1][2] + R[2][1]) / s
 
+    else:
+        s = np.sqrt(1.0 + R[2][2] - R[0][0] - R[1][1]) * 2
+        w = (R[1][0] - R[0][1]) / s
+        x = (R[0][2] + R[2][0]) / s
+        y = (R[1][2] + R[2][1]) / s
+        z = 0.25 * s
 
+    q = [w, x, y, z]
+    q = normalize_quaternion(q)
+    return q
 
+def decomposition(M):
+    t =[0, 0, 0]
+    t[0] = M[0][3]
+    t[1] = M[1][3]
+    t[2] = M[2][3]
+    print("Вектор зсуву:")
+    print(t)
 
+    s =[0, 0, 0]
+    s[0] = np.sqrt(M[0][0] ** 2 + M[1][0] ** 2 + M[2][0] ** 2)
+    s[1] = np.sqrt(M[0][1] ** 2 + M[1][1] ** 2 + M[2][1] ** 2)
+    s[2] = np.sqrt(M[0][2] ** 2 + M[1][2] ** 2 + M[2][2] ** 2)
+    print("Вектор масштабу:")
+    print(s)
 
+    R = np.zeros((3, 3))
+    R[0][0] = M[0][0] / s[0]
+    R[1][0] = M[1][0] / s[0]
+    R[2][0] = M[2][0] / s[0]
+    R[0][1] = M[0][1] / s[1]
+    R[1][1] = M[1][1] / s[1]
+    R[2][1] = M[2][1] / s[1]
+    R[0][2] = M[0][2] / s[2]
+    R[1][2] = M[1][2] / s[2]
+    R[2][2] = M[2][2] / s[2]
+    print("Матриця повороту:")
+    print(R)
+    print("Перевірка ортогональності:")
+    print(R.T @ R)
+    q = R_matrix_to_quaternion(R)
+    print("Кватерніон:")
+    print(q)
+
+    return q
